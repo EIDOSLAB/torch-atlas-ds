@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "torch-atlas-ds"
+version = "0.1.0"
+description = "A map-style dataset format for PyTorch made for storing large amounts of data."
+authors = ["Luca Molinaro"]
+readme = "README.md"
+packages = [{include = "torch_atlas_ds"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+torch = "^2"
+
+[tool.poetry.group.dev.dependencies]
+torch = "2.3.1"
+fire = "^0.7.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
