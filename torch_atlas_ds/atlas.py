@@ -31,6 +31,10 @@ class AtlasDatasetShard(Dataset):
         self.mmap_index = mmap_index
 
         self.metadata = AtlasDatasetShardMetadata(**json.loads((self.root / 'meta.json').read_text()))
+
+        if self.metadata.version != AtlasDatasetShard.VERSION:
+            raise Exception('The Atlas Dataset Version used in this shard is not supported')
+
         self.block_index = np.load(self.root / 'index.npy', mmap_mode='r' if mmap_index else None)
         self.data_file = open(self.root / 'data.bin', 'rb')
 
