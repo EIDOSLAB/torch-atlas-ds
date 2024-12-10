@@ -9,10 +9,12 @@ packages = [{include = "torch_atlas_ds"}]
 [tool.poetry.dependencies]
 python = "^3.10"
 torch = "^2"
+zstandard = ">= 0.20, <1"
 
 [tool.poetry.group.dev.dependencies]
 torch = "2.3.1"
 fire = "^0.7.0"
+zstandard = "0.22.0"
 
 [build-system]
 requires = ["poetry-core"]

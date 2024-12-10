@@ -1,4 +1,6 @@
 import torch
+from pathlib import Path
+from torch_atlas_ds.writer import AtlasDatasetShardWriter
 
 class TestCommands:
     """
@@ -22,3 +24,22 @@ class TestCommands:
                 r = a @ b
             
             print('GPU Test successful')
+
+
+    def write_single_shard(self,
+                           input_text_file: Path | str,
+                           output_path: Path | str,
+                           block_size: int,
+                           compress: bool = True,
+                           compression_level: int = 3,
+                           use_compression_dict = True,
+                           compression_dict_size: float = 0.01
+                           ) -> None:
+        
+
+        with AtlasDatasetShardWriter(output_path, block_size, compress, compression_level, use_compression_dict, compression_dict_size) as shard_writer:
+            with open(input_text_file, 'r') as text_file:
+                for line in text_file:
+                    shard_writer.add_example(line.rstrip())
+        
+        print('done')
