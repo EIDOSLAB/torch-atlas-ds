@@ -134,6 +134,10 @@ class AtlasDatasetShardWriter:
         if self.data_file is not None:
             self.data_file.close()
         
+        # add the size of the whole shard in bytes as last element of the index
+        # makes it easier to calculate the size of the last block
+        self.index.append(self.shard_size_bytes)
+        
         self._save_index()
         
         (self.path / 'meta.json').write_text(json.dumps(self.metadata._asdict(), indent=4))
