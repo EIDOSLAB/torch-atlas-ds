@@ -2,10 +2,18 @@ import zstandard
 import pickle
 import json
 import numpy as np
-import io
+from enum import IntEnum
 from torch.utils.data import Dataset
 from pathlib import Path
 from typing import Any, NamedTuple
+
+
+
+class CompressionStrategy(IntEnum):
+    NO_COMPRESSION = 0
+    STANDARD_COMPRESSION = 1
+    SHARED_DICTIONARY_COMPRESSION = 2
+    DICTIONARY_COMPRESSION = 3
 
 
 
@@ -13,9 +21,9 @@ class AtlasDatasetShardMetadata(NamedTuple):
     version: int
     block_size: int
     stored_examples: int
-    compression_enabled: bool
+    compression_strategy: CompressionStrategy
     compression_level: int
-    use_compression_dict: bool
+    compression_dict_size: float
 
 
 
@@ -24,7 +32,8 @@ class AtlasDatasetShard(Dataset):
 
     def __init__(self,
                  root: Path | str,
-                 mmap_index: bool = True
+                 mmap_index: bool = True,
+                 compression_dict: zstandard.ZstdCompressionDict | None = None
                  ) -> None:
         super().__init__()
         self.root = Path(root)
@@ -38,10 +47,14 @@ class AtlasDatasetShard(Dataset):
         self.block_index = np.load(self.root / 'index.npy', mmap_mode='r' if mmap_index else None)
         self.data_file = open(self.root / 'data.bin', 'rb')
 
-        if self.metadata.use_compression_dict:
+        if self.metadata.compression_strategy == CompressionStrategy.DICTIONARY_COMPRESSION:
             comp_dict = zstandard.ZstdCompressionDict((self.root / 'zstd_dict.bin').read_bytes())
             self.decompressor = zstandard.ZstdDecompressor(dict_data=comp_dict)
-        elif self.metadata.compression_enabled:
+        elif self.metadata.compression_strategy == CompressionStrategy.SHARED_DICTIONARY_COMPRESSION:
+            if compression_dict is None:
+                raise Exception('When using SHARED_DICTIONARY_COMPRESSION strategy you must provide a compression_dict')
+            self.decompressor = zstandard.ZstdDecompressor(dict_data=compression_dict)
+        elif self.metadata.compression_strategy == CompressionStrategy.STANDARD_COMPRESSION:
             self.decompressor = zstandard.ZstdDecompressor()
         else:
             self.decompressor = None

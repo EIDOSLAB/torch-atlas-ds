@@ -5,7 +5,10 @@ import bisect
 import numpy as np
 from pathlib import Path
 from typing import Any
-from torch_atlas_ds.atlas import AtlasDatasetShardMetadata
+from torch_atlas_ds.atlas import AtlasDatasetShardMetadata, CompressionStrategy
+
+
+
 
 
 class AtlasDatasetShardWriter:
@@ -14,24 +17,27 @@ class AtlasDatasetShardWriter:
     def __init__(self,
                  path: Path | str,
                  block_size: int,
-                 compress: bool = True,
+                 compression_strategy: CompressionStrategy = CompressionStrategy.DICTIONARY_COMPRESSION,
                  compression_level: int = 3,
-                 use_compression_dict: bool = True,
+                 compression_dict: zstandard.ZstdCompressionDict | None = None,
                  compression_dict_size: float = 0.01
                  ) -> None:
         self.path = Path(path)
-        self.compression_dict_size = compression_dict_size
 
         assert block_size > 0, 'block_size must be > 0'
         assert compression_dict_size >= 0.0 and compression_dict_size <= 1.0, 'compression_dict_size must be between 0 and 1'
 
+        if compression_strategy == CompressionStrategy.SHARED_DICTIONARY_COMPRESSION:
+            if compression_dict is None:
+                raise Exception('When using SHARED_DICTIONARY_COMPRESSION strategy you must provide a compression_dict')
+        
         self.metadata = AtlasDatasetShardMetadata(
             version=AtlasDatasetShardWriter.VERSION,
             block_size=block_size,
             stored_examples=0,
-            compression_enabled=compress,
+            compression_strategy=compression_strategy,
             compression_level=compression_level,
-            use_compression_dict=use_compression_dict and compress
+            compression_dict_size=compression_dict_size
         )
 
         self.path.mkdir()
@@ -44,6 +50,11 @@ class AtlasDatasetShardWriter:
         self.data_file = None
         self.compressor = None
 
+        if compression_strategy == CompressionStrategy.SHARED_DICTIONARY_COMPRESSION:
+            self.compressor = zstandard.ZstdCompressor(dict_data=compression_dict, level=compression_level)
+        elif compression_strategy == CompressionStrategy.STANDARD_COMPRESSION:
+            self.compressor = zstandard.ZstdCompressor(level=compression_level)
+
     def add_example(self, example: Any) -> None:
         self.current_block.append(example)
         self.stored_examples += 1
@@ -55,12 +66,11 @@ class AtlasDatasetShardWriter:
         pickled_block = pickle.dumps(self.current_block)
         self.current_block = []
 
-        if self.metadata.use_compression_dict:
+        if self.metadata.compression_strategy == CompressionStrategy.DICTIONARY_COMPRESSION:
             self.pickled_blocks.append(pickled_block)
 
-        elif self.metadata.compression_enabled:
-            if self.compressor is None:
-                self.compressor = zstandard.ZstdCompressor(level=self.metadata.compression_level)
+        elif self.metadata.compression_strategy != CompressionStrategy.NO_COMPRESSION:
+            assert self.compressor is not None
             self._write_block(self.compressor.compress(pickled_block))
 
         else:
@@ -107,10 +117,10 @@ class AtlasDatasetShardWriter:
         if len(self.current_block) > 0:
             self._add_block()
     
-        if self.metadata.use_compression_dict:
+        if self.metadata.compression_strategy == CompressionStrategy.DICTIONARY_COMPRESSION:
             if len(self.pickled_blocks) >= 7: # if less than 7, it crashes because there are not enough samples to train the dictionary
                 uncompressed_content_size = sum(len(x) for x in self.pickled_blocks)
-                compression_dict_size = int(self.compression_dict_size * uncompressed_content_size) + 1
+                compression_dict_size = int(self.metadata.compression_dict_size * uncompressed_content_size) + 1
                 compression_dict_size = max(compression_dict_size, 1024)
                 compression_dict = zstandard.train_dictionary(compression_dict_size, self.pickled_blocks, level=self.metadata.compression_level)
                 
@@ -126,7 +136,8 @@ class AtlasDatasetShardWriter:
                 del cctx
                 del compression_dict
             else:
-                self._update_metadata('use_compression_dict', False)
+                self._update_metadata('compression_strategy', CompressionStrategy.STANDARD_COMPRESSION)
+                self.compressor = zstandard.ZstdCompressor(level=self.metadata.compression_level)
             
             for block in self.pickled_blocks:
                 self._write_block(block)
