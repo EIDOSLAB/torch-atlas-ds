@@ -2,10 +2,12 @@ import zstandard
 import pickle
 import json
 import numpy as np
+import bisect
 from enum import IntEnum
+from itertools import accumulate
 from torch.utils.data import Dataset
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, List
 
 
 
@@ -27,6 +29,13 @@ class AtlasDatasetShardMetadata(NamedTuple):
 
 
 
+class AtlasDatasetMetadata(NamedTuple):
+    version: int
+    shard_sizes: List[int]
+    compression_strategy: CompressionStrategy
+
+
+
 class AtlasDatasetShard(Dataset):
     VERSION = 1
 
@@ -42,7 +51,7 @@ class AtlasDatasetShard(Dataset):
         self.metadata = AtlasDatasetShardMetadata(**json.loads((self.root / 'meta.json').read_text()))
 
         if self.metadata.version != AtlasDatasetShard.VERSION:
-            raise Exception('The Atlas Dataset Version used in this shard is not supported')
+            raise Exception('The Atlas Dataset version used in this shard is not supported')
 
         self.block_index = np.load(self.root / 'index.npy', mmap_mode='r' if mmap_index else None)
         self.data_file = open(self.root / 'data.bin', 'rb')
@@ -95,3 +104,59 @@ class AtlasDatasetShard(Dataset):
         self.last_block = block
 
         return block[within_block_index]
+
+
+
+class AtlasDataset(Dataset):
+    VERSION = 1
+
+    def __init__(self,
+                 root: Path | str,
+                 mmap_index: bool = True
+                 ) -> None:
+        self.root = Path(root)
+        self.mmap_index = mmap_index
+
+        self.metadata = AtlasDatasetMetadata(**json.loads((self.root / 'meta.json').read_text()))
+
+        if self.metadata.version != AtlasDataset.VERSION:
+            raise Exception('The version of this Atlas Dataset is not supported')
+
+        shard_paths = sorted([p for p in self.root.iterdir() if p.is_dir()])
+
+        shared_dict = None
+
+        if self.metadata.compression_strategy == CompressionStrategy.SHARED_DICTIONARY_COMPRESSION:
+            shared_dict = zstandard.ZstdCompressionDict((self.root / 'zstd_dict.bin').read_bytes())
+
+        self.shards = [
+            AtlasDatasetShard(
+                root=p,
+                mmap_index=self.mmap_index,
+                compression_dict=shared_dict
+            )
+            for p in shard_paths
+        ]
+
+        # This is useful when some shards are missing (multinode training with different shards used in different nodes)
+        self.actual_shard_sizes = [len(shard) for shard in self.shards]
+        self.cumulative_shard_sizes = list(accumulate(self.actual_shard_sizes))
+
+    def __len__(self) -> int:
+        return self.cumulative_shard_sizes[-1]
+    
+    def __getitem__(self, index) -> Any:
+        if index < 0:
+            index = len(self) + index
+        
+        if index >= len(self):
+            raise Exception('Index out of range')
+        
+        shard_idx = bisect.bisect_left(self.cumulative_shard_sizes, index + 1)
+
+        if shard_idx == 0:
+            within_shard_index = index
+        else:
+            within_shard_index = index - self.cumulative_shard_sizes[shard_idx - 1]
+
+        return self.shards[shard_idx][within_shard_index]

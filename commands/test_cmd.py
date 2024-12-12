@@ -1,7 +1,7 @@
 import torch
 import zstandard
 from pathlib import Path
-from torch_atlas_ds.writer import AtlasDatasetShardWriter, CompressionStrategy
+from torch_atlas_ds.writer import AtlasDatasetShardWriter, CompressionStrategy, AtlasDatasetWriter
 
 class TestCommands:
     """
@@ -56,4 +56,33 @@ class TestCommands:
                 for line in text_file:
                     shard_writer.add_example(line.rstrip())
         
+        print('done')
+
+
+    def write_atlas_dataset(self,
+                            input_text_file: Path | str,
+                            output_path: Path | str,
+                            shard_size: int,
+                            block_size: int,
+                            compression: str = 'dictionary',
+                            compression_level: int = 3,
+                            compression_dict_size: float = 0.01
+                            ) -> None:
+
+        compression_strategy = CompressionStrategy[compression.upper() + '_COMPRESSION']
+
+        params = {
+            "path": Path(output_path),
+            "shard_size": shard_size,
+            "block_size": block_size,
+            "compression_strategy": compression_strategy,
+            "compression_level": compression_level,
+            "compression_dict_size": compression_dict_size
+        }
+
+        with AtlasDatasetWriter(**params) as atlas_writer:
+            with open(input_text_file, 'r') as text_file:
+                for line in text_file:
+                    atlas_writer.add_example(line.rstrip())
+
         print('done')

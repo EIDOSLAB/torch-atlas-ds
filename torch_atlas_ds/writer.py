@@ -9,8 +9,6 @@ from torch_atlas_ds.atlas import AtlasDatasetShardMetadata, CompressionStrategy
 
 
 
-
-
 class AtlasDatasetShardWriter:
     VERSION = 1
 
@@ -152,6 +150,101 @@ class AtlasDatasetShardWriter:
         self._save_index()
         
         (self.path / 'meta.json').write_text(json.dumps(self.metadata._asdict(), indent=4))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+    
+    def __len__(self) -> int:
+        return self.stored_examples
+
+
+
+class AtlasDatasetWriter:
+    VERSION = 1
+
+    def __init__(self,
+                 path: Path | str,
+                 shard_size: int,
+                 block_size: int,
+                 compression_strategy: CompressionStrategy = CompressionStrategy.SHARED_DICTIONARY_COMPRESSION,
+                 compression_level: int = 3,
+                 compression_dict_size: float = 0.01
+                 ) -> None:
+        self.path = Path(path)
+        self.shard_size = shard_size
+        self.block_size = block_size
+        self.compression_strategy = compression_strategy
+        self.compression_level = compression_level
+        self.compression_dict_size = compression_dict_size
+
+        self.path.mkdir()
+
+        first_shard_comp_strat = self.compression_strategy
+
+        if self.compression_strategy == CompressionStrategy.SHARED_DICTIONARY_COMPRESSION:
+            first_shard_comp_strat = CompressionStrategy.DICTIONARY_COMPRESSION
+
+        self.current_shard = AtlasDatasetShardWriter(
+            path=self.path / '0',
+            block_size=block_size,
+            compression_strategy=first_shard_comp_strat,
+            compression_level=compression_level,
+            compression_dict_size=compression_dict_size
+        )
+        self.shard_sizes = []
+        self.shared_dict = None
+    
+    def add_example(self, example: Any) -> None:
+        current_len = len(self.current_shard)
+
+        if current_len < self.shard_size:
+            self.current_shard.add_example(example)
+            return
+    
+        self.current_shard.close()
+        self.shard_sizes.append(current_len)
+
+        if len(self.shard_sizes) == 1 and self.compression_strategy == CompressionStrategy.SHARED_DICTIONARY_COMPRESSION:
+            dict_path = self.current_shard.path / 'zstd_dict.bin'
+            dict_bytes = dict_path.read_bytes()
+            dict_path.rename(self.path / 'zstd_dict.bin')
+            self.shared_dict = zstandard.ZstdCompressionDict(dict_bytes)
+            shard_meta_path = self.current_shard.path / 'meta.json'
+            shard_meta = json.loads(shard_meta_path.read_text())
+            shard_meta['compression_strategy'] = self.compression_strategy
+            shard_meta_path.write_text(json.dumps(shard_meta, indent=4))
+        
+        self.current_shard = AtlasDatasetShardWriter(
+            path=self.path / str(len(self.shard_sizes)),
+            block_size=self.block_size,
+            compression_strategy=self.compression_strategy,
+            compression_level=self.compression_level,
+            compression_dict=self.shared_dict,
+            compression_dict_size=self.compression_dict_size
+        )
+
+        self.current_shard.add_example(example)
+
+    def close(self) -> None:
+        self.shard_sizes.append(len(self.current_shard))
+        self.current_shard.close()
+        
+        meta = {
+            'version': AtlasDatasetWriter.VERSION,
+            'shard_sizes': self.shard_sizes,
+            'compression_strategy': self.compression_strategy
+        }
+
+        (self.path / 'meta.json').write_text(json.dumps(meta, indent=4))
+        
+        num_digits = len(self.current_shard.path.name)
+
+        for p in self.path.iterdir():
+            if p.is_dir():
+                p.rename(p.parent / f'{p.name:0>{num_digits}}')
 
     def __enter__(self):
         return self
