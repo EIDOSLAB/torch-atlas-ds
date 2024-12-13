@@ -42,42 +42,49 @@ class AtlasDatasetShard(Dataset):
     def __init__(self,
                  root: Path | str,
                  mmap_index: bool = True,
-                 compression_dict: zstandard.ZstdCompressionDict | None = None
+                 compression_dict_bytes: bytes | None = None
                  ) -> None:
         super().__init__()
         self.root = Path(root)
         self.mmap_index = mmap_index
+        self.compression_dict_bytes = compression_dict_bytes
+        self._initialized = False
 
         self.metadata = AtlasDatasetShardMetadata(**json.loads((self.root / 'meta.json').read_text()))
 
         if self.metadata.version != AtlasDatasetShard.VERSION:
             raise Exception('The Atlas Dataset version used in this shard is not supported')
 
-        self.block_index = np.load(self.root / 'index.npy', mmap_mode='r' if mmap_index else None)
+        self.last_block = None
+        self.last_block_idx = None
+        self.decompressor = None
+    
+    def _lazy_init(self) -> None:
+        if self._initialized:
+            return
+
+        self.block_index = np.load(self.root / 'index.npy', mmap_mode='r' if self.mmap_index else None)
         self.data_file = open(self.root / 'data.bin', 'rb')
 
         if self.metadata.compression_strategy == CompressionStrategy.DICTIONARY_COMPRESSION:
             comp_dict = zstandard.ZstdCompressionDict((self.root / 'zstd_dict.bin').read_bytes())
             self.decompressor = zstandard.ZstdDecompressor(dict_data=comp_dict)
         elif self.metadata.compression_strategy == CompressionStrategy.SHARED_DICTIONARY_COMPRESSION:
-            if compression_dict is None:
+            if self.compression_dict_bytes is None:
                 raise Exception('When using SHARED_DICTIONARY_COMPRESSION strategy you must provide a compression_dict')
-            self.decompressor = zstandard.ZstdDecompressor(dict_data=compression_dict)
+            self.decompressor = zstandard.ZstdDecompressor(dict_data=zstandard.ZstdCompressionDict(self.compression_dict_bytes))
         elif self.metadata.compression_strategy == CompressionStrategy.STANDARD_COMPRESSION:
             self.decompressor = zstandard.ZstdDecompressor()
-        else:
-            self.decompressor = None
-    
-        self.last_block = None
-        self.last_block_idx = None
-
-    def __del__(self) -> None:
-        self.data_file.close()
+        
+        self._initialized = True
     
     def __len__(self) -> int:
         return self.metadata.stored_examples
     
     def __getitem__(self, index) -> Any:
+        if not self._initialized:
+            self._lazy_init()
+
         if index < 0:
             index = len(self) + index
         
@@ -124,16 +131,16 @@ class AtlasDataset(Dataset):
 
         shard_paths = sorted([p for p in self.root.iterdir() if p.is_dir()])
 
-        shared_dict = None
+        shared_dict_bytes = None
 
         if self.metadata.compression_strategy == CompressionStrategy.SHARED_DICTIONARY_COMPRESSION:
-            shared_dict = zstandard.ZstdCompressionDict((self.root / 'zstd_dict.bin').read_bytes())
+            shared_dict_bytes = (self.root / 'zstd_dict.bin').read_bytes()
 
         self.shards = [
             AtlasDatasetShard(
                 root=p,
                 mmap_index=self.mmap_index,
-                compression_dict=shared_dict
+                compression_dict_bytes=shared_dict_bytes
             )
             for p in shard_paths
         ]
