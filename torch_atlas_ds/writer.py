@@ -360,14 +360,19 @@ class AtlasDatasetWriter:
         self.shard_sizes.append(current_len)
 
         if len(self.shard_sizes) == 1 and self.compression_strategy == CompressionStrategy.SHARED_DICTIONARY_COMPRESSION:
-            dict_path = self.current_shard.path / 'zstd_dict.bin'
-            dict_bytes = dict_path.read_bytes()
-            dict_path.rename(self.path / 'zstd_dict.bin')
-            self.shared_dict = zstandard.ZstdCompressionDict(dict_bytes)
             shard_meta_path = self.current_shard.path / 'meta.json'
             shard_meta = json.loads(shard_meta_path.read_text())
-            shard_meta['compression_strategy'] = self.compression_strategy
-            shard_meta_path.write_text(json.dumps(shard_meta, indent=4))
+
+            if shard_meta['compression_strategy'] == CompressionStrategy.STANDARD_COMPRESSION:
+                # This happens when the first shard has less than 7 blocks
+                self.compression_strategy = CompressionStrategy.STANDARD_COMPRESSION
+            else:
+                dict_path = self.current_shard.path / 'zstd_dict.bin'
+                dict_bytes = dict_path.read_bytes()
+                dict_path.rename(self.path / 'zstd_dict.bin')
+                self.shared_dict = zstandard.ZstdCompressionDict(dict_bytes)
+                shard_meta['compression_strategy'] = self.compression_strategy
+                shard_meta_path.write_text(json.dumps(shard_meta, indent=4))
         
         self.current_shard = AtlasDatasetShardWriter(
             path=self.path / str(len(self.shard_sizes)),
