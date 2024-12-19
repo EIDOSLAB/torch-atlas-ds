@@ -218,21 +218,16 @@ class AtlasDatasetShardWriter:
                 
                 cctx = zstandard.ZstdCompressor(dict_data=compression_dict, level=self.metadata.compression_level)
                 
-                for i in range(len(self.pickled_blocks)):
-                    block = self.pickled_blocks[i]
-                    compressed = cctx.compress(block)
-                    self.pickled_blocks[i] = compressed
-
                 (self.path / 'zstd_dict.bin').write_bytes(compression_dict.as_bytes())
-                
-                del cctx
-                del compression_dict
             else:
                 self._update_metadata('compression_strategy', CompressionStrategy.STANDARD_COMPRESSION)
-                self.compressor = zstandard.ZstdCompressor(level=self.metadata.compression_level)
-            
+                cctx = zstandard.ZstdCompressor(level=self.metadata.compression_level)
+
             for block in self.pickled_blocks:
-                self._write_block(block)
+                compressed = cctx.compress(block)
+                self._write_block(compressed)
+            
+            del cctx
     
         if self.data_file is not None:
             self.data_file.close()

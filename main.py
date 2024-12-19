@@ -1,4 +1,4 @@
-from commands.test_cmd import TestCommands
+from commands.manual_test_cmd import TestCommands
 import fire
 
 class Commands:
