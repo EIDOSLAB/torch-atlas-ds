@@ -3,20 +3,9 @@ import zstandard
 import json
 import numpy as np
 import pickle
-import random
-import math
+from tests.common import SENTENCES, select_random_sample
 from torch_atlas_ds import AtlasDatasetShardWriter, CompressionStrategy
 
-SENTENCES = [
-    "The sun rises in the east and sets in the west.",
-    "Cats are known for their graceful movements.",
-    "She enjoys reading books in her free time.",
-    "A quick brown fox jumps over the lazy dog.",
-    "The park was filled with children playing games.",
-    "He prefers tea over coffee in the morning.",
-    "The train arrived at the station right on time.",
-    "Winter is the coldest season of the year."
-]
 
 
 @pytest.mark.parametrize(
@@ -135,12 +124,7 @@ def test_writer_add_examples_and_close(tmp_path, num_examples, comp_strat, exp_c
         compression_dict_size=comp_dict_size
     )
 
-    random.seed(117)
-    samples_multiplier = math.ceil(num_examples / len(SENTENCES))
-    samples = SENTENCES * samples_multiplier
-    random.shuffle(samples)
-    samples = samples[:num_examples]
-    assert len(samples) == num_examples
+    samples = select_random_sample(num_examples)
 
     for i, sample in enumerate(samples):
         assert writer.stored_examples == i
@@ -158,7 +142,7 @@ def test_writer_add_examples_and_close(tmp_path, num_examples, comp_strat, exp_c
     metadata = json.loads(metadata_path.read_text())
 
     assert metadata == {
-        "version": 1,
+        "version": AtlasDatasetShardWriter.VERSION,
         "block_size": block_size,
         "stored_examples": num_examples,
         "compression_strategy": exp_comp_strat,
