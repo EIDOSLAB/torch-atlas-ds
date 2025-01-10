@@ -17,7 +17,7 @@ Classes:
 Example:
     Writing a multi-shard dataset:
         ```python
-        from torch_atlas_ds.writer import AtlasDatasetWriter
+        from torch_atlas_ds import AtlasDatasetWriter
 
         with AtlasDatasetWriter('/path/to/output', shard_size=1000, block_size=100) as writer:
             for example in examples:
@@ -26,7 +26,7 @@ Example:
 
     Writing a single shard:
         ```python
-        from torch_atlas_ds.writer import AtlasDatasetShardWriter
+        from torch_atlas_ds import AtlasDatasetShardWriter
 
         with AtlasDatasetShardWriter('/path/to/shard', block_size=100) as shard_writer:
             for example in examples:

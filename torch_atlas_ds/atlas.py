@@ -26,7 +26,7 @@ Classes:
 Example:
     Reading data from an Atlas dataset:
         ```python
-        from torch_atlas_ds.atlas import AtlasDataset
+        from torch_atlas_ds import AtlasDataset
 
         dataset = AtlasDataset('/path/to/dataset')
         example = dataset[42]
@@ -34,7 +34,7 @@ Example:
 
     Accessing shard-level data:
         ```python
-        from torch_atlas_ds.atlas import AtlasDatasetShard
+        from torch_atlas_ds import AtlasDatasetShard
 
         shard = AtlasDatasetShard('/path/to/shard')
         example = shard[10]

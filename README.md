@@ -5,7 +5,7 @@ A map-style dataset format for PyTorch made for storing large amounts of data. Y
 
 ### **Creating a Dataset**
 ```python
-from atlas_dataset.writer import AtlasDatasetWriter
+from torch_atlas_ds import AtlasDatasetWriter
 
 # Initialize the writer
 with AtlasDatasetWriter("dataset_root", shard_size=1000, block_size=100) as writer:
@@ -15,7 +15,7 @@ with AtlasDatasetWriter("dataset_root", shard_size=1000, block_size=100) as writ
 
 ### **Reading a Dataset**
 ```python
-from atlas_dataset.atlas import AtlasDataset
+from torch_atlas_ds import AtlasDataset
 
 # Load the dataset
 dataset = AtlasDataset("dataset_root")
