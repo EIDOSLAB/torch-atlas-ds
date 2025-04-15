@@ -11,7 +11,21 @@ A map-style dataset format for PyTorch made for storing large amounts of data. Y
 
 ## Limitations
 - Streaming is not supported to improve random access efficiency (the dataset must be stored on the machine / cluster you use for training)
-- Currently, you cannot modify / append / delete examples in an existing Atlas Dataset (unless you create your own script), but I plan to improve this
+- Currently, you cannot modify / append / delete examples in an existing Atlas Dataset (unless you create your own script), but I plan to improve this in the near future
+
+## Installation
+
+Currently the project is hosted only on github, to install it use:
+
+```bash
+pip install git+https://github.com/EIDOSLAB/torch-atlas-ds.git
+```
+
+or, if you use poetry:
+
+```bash
+poetry add git+https://github.com/EIDOSLAB/torch-atlas-ds.git
+```
 
 ## Example Workflows
 
